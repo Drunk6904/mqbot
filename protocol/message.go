@@ -26,11 +26,6 @@ func newHeader() Header {
 
 // ============ 状态常量（协议层用字符串，跨语言友好）============
 
-const (
-	StatusTopic  = "robot/%s/status"
-	TaskTopic    = "robot/%s/task"
-	CommandTopic = "robot/%s/command"
-)
 
 const (
 	StateIdle     = "IDLE"
@@ -55,12 +50,12 @@ const (
 
 // StatusBody 机器人上报的业务数据
 type StatusBody struct {
-	ID      string  `json:"id"`
-	X       float64 `json:"x"`
-	Y       float64 `json:"y"`
-	Battery int     `json:"battery"`
-	State   string  `json:"state"`
-	Speed   float64 `json:"speed"`
+	ID      string  `json:"id"`                // 设备id
+	X       float64 `json:"x"`                 // x 坐标
+	Y       float64 `json:"y"`                 // y 坐标
+	Battery int     `json:"battery"`           // 电量
+	State   string  `json:"state"`             // 状态
+	Speed   float64 `json:"speed"`             // 速度
 	TaskID  string  `json:"task_id,omitempty"` // 当前执行的任务ID，空则省略
 }
 
@@ -78,10 +73,10 @@ func NewStatusMessage(body StatusBody) StatusMessage {
 
 // TaskBody 任务的业务数据
 type TaskBody struct {
-	TaskID   string                 `json:"task_id"`
-	Action   string                 `json:"action"`
-	Params   map[string]interface{} `json:"params,omitempty"`
-	Priority string                 `json:"priority"`
+	TaskID   string         `json:"task_id"`
+	Action   string         `json:"action"`
+	Params   map[string]any `json:"params,omitempty"`
+	Priority string         `json:"priority"`
 }
 
 type TaskMessage struct {
@@ -103,8 +98,8 @@ func NewTaskMessage(body TaskBody) TaskMessage {
 
 // CommandBody 指令的业务数据
 type CommandBody struct {
-	Action string                 `json:"action"`
-	Params map[string]interface{} `json:"params,omitempty"`
+	Action string         `json:"action"`
+	Params map[string]any `json:"params,omitempty"`
 }
 
 type CommandMessage struct {
@@ -119,7 +114,7 @@ func NewCommandMessage(body CommandBody) CommandMessage {
 // ============ Params 取值工具（避免到处写类型断言）============
 
 // FloatParam 安全地从 params 取浮点数，取不到返回默认值
-func FloatParam(params map[string]interface{}, key string, def float64) float64 {
+func FloatParam(params map[string]any, key string, def float64) float64 {
 	if params == nil {
 		return def
 	}
@@ -130,7 +125,7 @@ func FloatParam(params map[string]interface{}, key string, def float64) float64 
 }
 
 // StringParam 安全地从 params 取字符串
-func StringParam(params map[string]interface{}, key string, def string) string {
+func StringParam(params map[string]any, key string, def string) string {
 	if params == nil {
 		return def
 	}

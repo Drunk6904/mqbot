@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	protocol "github.com/Drunk6904/mqbot"
+	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/gin-gonic/gin"
 )

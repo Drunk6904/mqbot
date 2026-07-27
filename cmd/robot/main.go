@@ -13,21 +13,15 @@ import (
 	"syscall"
 	"time"
 
-	protocol "github.com/Drunk6904/mqbot"
+	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
 )
 
 type RoBot struct {
-	X     float64 `json:"x"`
-	Y     float64 `json:"y"`
-	Speed float64 `json:"speed"`
+	protocol.StatusBody
 }
 
-var selfBot = RoBot{
-	X:     0,
-	Y:     0,
-	Speed: 1,
-}
+var selfBot = RoBot{}
 
 func main() {
 	server := flag.String("server", "localhost:1883", "指定mqtt的broker地址")

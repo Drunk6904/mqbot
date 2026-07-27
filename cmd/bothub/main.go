@@ -40,7 +40,7 @@ func main() {
 	<-ic
 	if c != nil {
 		err := c.Disconnect(&paho.Disconnect{ReasonCode: 0})
-		HandErr(err)
+	if err != nil { log.Fatalf("发生错误: %s\n", err) }
 	}
 	os.Exit(0)
 }
@@ -98,7 +98,7 @@ func NewMqttClient() *paho.Client {
 }
 func ConnectToBroker(c *paho.Client) {
 	ca, err := c.Connect(context.Background(), ConnectPack)
-	HandErr(err)
+	if err != nil { log.Fatalf("发生错误: %s\n", err) }
 	if ca.ReasonCode != 0 {
 		log.Fatalf("连接到 %s 发生错误：%d - %s", server, ca.ReasonCode, ca.Properties.ReasonString)
 	}
@@ -112,7 +112,7 @@ func ConnectToBroker(c *paho.Client) {
 		},
 	})
 	// 错误处理
-	HandErr(err)
+	if err != nil { log.Fatalf("发生错误: %s\n", err) }
 	if len(ps.Reasons) == 0 {
 		log.Fatalf("订阅 %s 未收到任何 reason code", topic)
 	}
@@ -142,9 +142,3 @@ func handStatus(pr paho.PublishReceived) {
 
 }
 
-func HandErr(err error, msg ...string) {
-	if err == nil {
-		return
-	}
-	log.Fatalf("发生错误: %s\n%v", err, msg)
-}

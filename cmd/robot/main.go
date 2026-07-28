@@ -9,10 +9,13 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Drunk6904/mqbot/internal/mqtt"
+	"github.com/Drunk6904/mqbot/internal/robot"
 	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
 )
@@ -21,7 +24,9 @@ type RoBot struct {
 	protocol.StatusBody
 }
 
-var selfBot = RoBot{}
+var selfBot = RoBot{protocol.StatusBody{
+	Speed: 1,
+}}
 
 func main() {
 	host := flag.String("server", "localhost", "指定mqtt的broker ip")
@@ -77,7 +82,9 @@ func main() {
 		log.Fatalf("订阅频道发生错误：%s\n", err)
 	}
 
-	for {
+	t := time.NewTicker(1000 * time.Millisecond)
+	defer t.Stop()
+	for range t.C {
 		msg, err := json.Marshal(selfBot)
 		if err != nil {
 			log.Fatalf("报备状态时，解析状态发生错误：%s\n", err)
@@ -94,15 +101,52 @@ func main() {
 		if err != nil {
 			log.Fatalf("报备状态时，发布消息发生错误：%s\n", err)
 		}
-
-		selfBot.X += 0.1
-		selfBot.Y += 0.2
-
-		time.Sleep(time.Second * 3)
 	}
 }
 
 // 回调函数，对接收的消息进行处理
-func handMsg(paho.PublishReceived) (bool, error) {
+func handMsg(pr paho.PublishReceived) (bool, error) {
+	switch {
+	case strings.HasSuffix(pr.Packet.Topic, "/task"):
+		handTask(pr)
+	}
 	return true, nil
+}
+func handTask(pr paho.PublishReceived) {
+	var data protocol.TaskMessage
+	err := json.Unmarshal(pr.Packet.Payload, &data)
+	if err != nil {
+		log.Printf("处理MQTT消息失败: %+v", err)
+	}
+	switch data.Body.Action {
+	case protocol.ActionMoveTo:
+		handleMoveTo(data)
+	}
+
+}
+
+func handleMoveTo(data protocol.TaskMessage) {
+	log.Printf("开始处理移动指令，当前位置: x=%.3f, y=%.3f", selfBot.X, selfBot.Y)
+	// 获取x和y的字符串值
+	xStr := protocol.StringParam(data.Body.Params, "x", fmt.Sprintf("%.3f", selfBot.X))
+	yStr := protocol.StringParam(data.Body.Params, "y", fmt.Sprintf("%.3f", selfBot.Y))
+	log.Printf("目标位置: x=%s, y=%s", xStr, yStr)
+
+	// 将字符串转换为float64
+	x, err := strconv.ParseFloat(xStr, 64)
+	if err != nil {
+		log.Printf("解析x坐标失败: %v", err)
+		return
+	}
+
+	y, err := strconv.ParseFloat(yStr, 64)
+	if err != nil {
+		log.Printf("解析y坐标失败: %v", err)
+		return
+	}
+
+	// 调用MoveTo函数
+	log.Printf("开始移动到目标位置: x=%.3f, y=%.3f", x, y)
+	robot.MoveTo(&selfBot.StatusBody, x, y)
+	log.Printf("移动完成，当前位置: x=%.3f, y=%.3f", selfBot.X, selfBot.Y)
 }

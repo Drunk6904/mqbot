@@ -50,7 +50,7 @@ type MQTTBrokerInfo struct {
 
 func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 	var client *paho.Client
-	host := net.JoinHostPort(info.Host, fmt.Sprintf("%d", info.Port))
+	host := fmt.Sprintf("%s:%d", info.Host, info.Port)
 	if info.Schema == "" {
 		info.Schema = "tcp"
 	}
@@ -59,6 +59,9 @@ func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 	}
 	if info.ConnRetryBase == 0 {
 		info.ConnRetryBase = 1
+	}
+	if info.MaxPacketSize == 0 {
+		info.MaxPacketSize = 1024 * 1024
 	}
 	for i := 0; i <= info.ConnRetryMax; i++ {
 		// 如果是最后一次重试，返回错误(0,1,2 完毕后 3在这里直接返回 不会进行第四次连接)
@@ -94,13 +97,14 @@ func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 
 		conn, err := net.Dial(info.Schema, host)
 		if err != nil {
-			log.Printf("连接失败 (尝试 %d/%d): %s\n", i+1, info.ConnRetryMax, err)
+			log.Printf("连接 %s 失败 (尝试 %d/%d): %s\n", host, i+1, info.ConnRetryMax, err)
 			continue
 		}
 
 		client = paho.NewClient(paho.ClientConfig{
-			ClientID: info.ClientId,
-			Conn:     conn,
+			ClientID:          info.ClientId,
+			Conn:              conn,
+			OnPublishReceived: []func(paho.PublishReceived) (bool, error){info.OnPublishReceived},
 		})
 
 		cxt, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -111,10 +115,11 @@ func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 			log.Printf("连接成功 (尝试 %d/%d)\n", i+1, info.ConnRetryMax)
 			break
 		} else if err != nil {
-			log.Printf("连接失败 (尝试 %d/%d): %s\n", i+1, info.ConnRetryMax, err)
+			log.Printf("连接失败(%s) (尝试 %d/%d): %s\n", host, i+1, info.ConnRetryMax, err)
 		} else if ack.ReasonCode >= 0x80 {
 			log.Printf("连接失败 (尝试 %d/%d): 服务器返回错误码 %d - %s\n", i+1, info.ConnRetryMax, ack.ReasonCode, ack.Properties.ReasonString)
 		}
+
 		// 关闭 TCP 连接
 		conn.Close()
 		// 等待后再重试，防止触发限流

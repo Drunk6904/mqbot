@@ -25,12 +25,11 @@ type Response struct {
 
 // 常量 ===========================================================
 
-var host = "localhost"
+var host = "127.0.0.1"
 var port = 1883
 var clientId = "hub_10001"
 var username = ""
 var password = ""
-
 
 var webPort = 8080
 
@@ -50,6 +49,8 @@ func main() {
 		Password:   []byte(password),
 		CleanStart: true,
 		KeepAlive:  30,
+
+		Auth: false,
 
 		OnPublishReceived: MsgHandler,
 	})

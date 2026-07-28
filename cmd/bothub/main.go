@@ -25,34 +25,31 @@ type Response struct {
 
 // 常量 ===========================================================
 
-var server = "localhost:1883"
+var host = "localhost"
+var port = 1883
 var clientId = "hub_10001"
 var username = ""
 var password = ""
-var ConnectPack = &paho.Connect{
-	Username:   username,
-	Password:   []byte(password),
-	ClientID:   clientId,
-	CleanStart: false,
-	KeepAlive:  30,
-}
+
+
+var webPort = 8080
 
 // Main ==========================================================
 
 func main() {
 	// 启动web服务
-	go func() { log.Fatal(Web().Run(":8080")) }()
+	go func() { log.Fatal(Web().Run(fmt.Sprintf(":%d", webPort))) }()
 
 	// mqtt 服务
 	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
-		Host: "127.0.0.1",
-		Port: 1883,
+		Host: host,
+		Port: port,
 
-		ClientId:   ConnectPack.ClientID,
-		UserName:   ConnectPack.Username,
-		Password:   ConnectPack.Password,
-		CleanStart: ConnectPack.CleanStart,
-		KeepAlive:  ConnectPack.KeepAlive,
+		ClientId:   clientId,
+		UserName:   username,
+		Password:   []byte(password),
+		CleanStart: true,
+		KeepAlive:  30,
 
 		OnPublishReceived: MsgHandler,
 	})

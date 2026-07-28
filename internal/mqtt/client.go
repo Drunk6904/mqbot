@@ -140,7 +140,6 @@ func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 
 	for range t.C {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 
 		ps, err := c.Subscribe(ctx, &paho.Subscribe{
 			Subscriptions: []paho.SubscribeOptions{
@@ -154,6 +153,7 @@ func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 			log.Printf("订阅 %s 失败 (尝试 %d/%d): 未收到响应", topic, i, max)
 		} else if ps.Reasons[0] < 0x80 {
 			log.Printf("订阅 %s 成功 (尝试 %d/%d)", topic, i, max)
+			cancel()
 			return nil
 		} else {
 			reason := "未知错误"
@@ -165,8 +165,10 @@ func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 		}
 
 		if i >= max {
+			cancel()
 			return fmt.Errorf("订阅 %s 失败: 已达到最大重试次数 %d", topic, max)
 		}
+		cancel()
 		i++
 	}
 	return fmt.Errorf("订阅 %s 失败: ticker已停止", topic)

@@ -86,7 +86,7 @@ func main() {
 		props.User.Add("botId", *clientId)
 		cp := &paho.Publish{
 			Topic:      fmt.Sprintf(protocol.StatusTopic, *clientId),
-			QoS:        2,
+			QoS:        0,
 			Payload:    msg,
 			Properties: props,
 		}

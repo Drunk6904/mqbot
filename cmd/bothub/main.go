@@ -1,16 +1,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/Drunk6904/mqbot/internal/mqtt"
 	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
 	"github.com/gin-gonic/gin"
@@ -24,6 +23,20 @@ type Response struct {
 	Data any    `json:"data"`
 }
 
+// 常量 ===========================================================
+
+var server = "localhost:1883"
+var clientId = "hub_10001"
+var username = ""
+var password = ""
+var ConnectPack = &paho.Connect{
+	Username:   username,
+	Password:   []byte(password),
+	ClientID:   clientId,
+	CleanStart: false,
+	KeepAlive:  30,
+}
+
 // Main ==========================================================
 
 func main() {
@@ -31,8 +44,26 @@ func main() {
 	go func() { log.Fatal(Web().Run(":8080")) }()
 
 	// mqtt 服务
-	c := NewMqttClient()
-	go ConnectToBroker(c)
+	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
+		Host: "127.0.0.1",
+		Port: 1883,
+
+		ClientId:   ConnectPack.ClientID,
+		UserName:   ConnectPack.Username,
+		Password:   ConnectPack.Password,
+		CleanStart: ConnectPack.CleanStart,
+		KeepAlive:  ConnectPack.KeepAlive,
+
+		OnPublishReceived: MsgHandler,
+	})
+	if err != nil {
+		log.Fatalf("创建 mqtt 客户端失败：%v\n", err)
+	}
+
+	err = mqtt.SubscribeTopic(c, fmt.Sprintf(protocol.StatusTopic, "+"), 0)
+	if err != nil {
+		log.Fatalf("订阅状态主题失败\n")
+	}
 
 	// 停止
 	ic := make(chan os.Signal, 1)
@@ -40,7 +71,9 @@ func main() {
 	<-ic
 	if c != nil {
 		err := c.Disconnect(&paho.Disconnect{ReasonCode: 0})
-	if err != nil { log.Fatalf("发生错误: %s\n", err) }
+		if err != nil {
+			log.Fatalf("发生错误: %s\n", err)
+		}
 	}
 	os.Exit(0)
 }
@@ -60,70 +93,6 @@ func Web() (r *gin.Engine) {
 
 // MQTT 服务相关 =================================================
 
-var server = "localhost:1883"
-var clientId = "hub_10001"
-var username = ""
-var password = ""
-var ConnectPack = &paho.Connect{
-	Username:   username,
-	Password:   []byte(password),
-	ClientID:   clientId,
-	CleanStart: false,
-	KeepAlive:  30,
-}
-
-// mqtt 服务
-func NewMqttClient() *paho.Client {
-
-	conn, err := net.Dial("tcp", server)
-	if err != nil {
-		log.Fatalf("连接到mqtt borker时，发生错误：%s\n", err)
-	}
-
-	c := paho.NewClient(paho.ClientConfig{
-		ClientID: clientId,
-		Conn:     conn,
-	})
-
-	if username != "" {
-		ConnectPack.UsernameFlag = true
-	}
-	if password != "" {
-		ConnectPack.PasswordFlag = true
-	}
-	// 添加消息回调函数
-	c.AddOnPublishReceived(MsgHandler)
-
-	return c
-}
-func ConnectToBroker(c *paho.Client) {
-	ca, err := c.Connect(context.Background(), ConnectPack)
-	if err != nil { log.Fatalf("发生错误: %s\n", err) }
-	if ca.ReasonCode != 0 {
-		log.Fatalf("连接到 %s 发生错误：%d - %s", server, ca.ReasonCode, ca.Properties.ReasonString)
-	}
-	log.Printf("连接到 %s\n", server)
-
-	// 订阅主题
-	topic := fmt.Sprintf(protocol.StatusTopic, "+")
-	ps, err := c.Subscribe(context.Background(), &paho.Subscribe{
-		Subscriptions: []paho.SubscribeOptions{
-			{Topic: topic, QoS: 0},
-		},
-	})
-	// 错误处理
-	if err != nil { log.Fatalf("发生错误: %s\n", err) }
-	if len(ps.Reasons) == 0 {
-		log.Fatalf("订阅 %s 未收到任何 reason code", topic)
-	}
-	if ps.Reasons[0] < 0x80 {
-		log.Printf("订阅主题成功：%s\tQos:%d\n", topic, ps.Reasons[0])
-	} else {
-		log.Fatalf("订阅主题失败：%s\t0x%02X", topic, ps.Reasons[0])
-	}
-
-}
-
 // mqtt 消息处理函数
 func MsgHandler(pr paho.PublishReceived) (bool, error) {
 	topic := pr.Packet.Topic
@@ -141,4 +110,3 @@ func handStatus(pr paho.PublishReceived) {
 	log.Printf("[status] %s", pr.Packet.Payload)
 
 }
-

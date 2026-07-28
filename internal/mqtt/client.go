@@ -36,18 +36,30 @@ type MQTTBrokerInfo struct {
 	UserName string
 	Password []byte
 
-	// === 消息默认策略 (仅作为全局兜底值) ===
+	// ===== 消息默认策略 =====
 	DefaultQoS    byte   // 默认 QoS
 	MaxPacketSize uint32 // 限制最大报文大小，防止内存溢出
 
-	// === 重连策略 ===
+	// ===== 重连策略 =====
 	ConnRetryMax  int // 最大重试次数
 	ConnRetryBase int // 初始等待时间(秒)
+
+	// ===== 消息回调函数 =====
+	OnPublishReceived func(paho.PublishReceived) (bool, error)
 }
 
 func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 	var client *paho.Client
 	host := net.JoinHostPort(info.Host, fmt.Sprintf("%d", info.Port))
+	if info.Schema == "" {
+		info.Schema = "tcp"
+	}
+	if info.ConnRetryMax == 0 {
+		info.ConnRetryMax = 3
+	}
+	if info.ConnRetryBase == 0 {
+		info.ConnRetryBase = 1
+	}
 	for i := 0; i <= info.ConnRetryMax; i++ {
 		// 如果是最后一次重试，返回错误(0,1,2 完毕后 3在这里直接返回 不会进行第四次连接)
 		if i == info.ConnRetryMax {
@@ -116,4 +128,46 @@ func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 		}
 	}
 	return client, nil
+}
+
+func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
+
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+
+	max := 3
+	i := 1
+
+	for range t.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		ps, err := c.Subscribe(ctx, &paho.Subscribe{
+			Subscriptions: []paho.SubscribeOptions{
+				{Topic: topic, QoS: qos},
+			},
+		})
+
+		if err != nil {
+			log.Printf("订阅 %s 失败 (尝试 %d/%d): %v", topic, i, max, err)
+		} else if len(ps.Reasons) == 0 {
+			log.Printf("订阅 %s 失败 (尝试 %d/%d): 未收到响应", topic, i, max)
+		} else if ps.Reasons[0] < 0x80 {
+			log.Printf("订阅 %s 成功 (尝试 %d/%d)", topic, i, max)
+			return nil
+		} else {
+			reason := "未知错误"
+			if ps.Properties != nil && ps.Properties.ReasonString != "" {
+				reason = ps.Properties.ReasonString
+			}
+			log.Printf("订阅 %s 被拒绝 (尝试 %d/%d): [0x%02X] %s", topic, i, max, ps.Reasons[0], reason)
+			err = fmt.Errorf("reason code 0x%02X", ps.Reasons[0])
+		}
+
+		if i >= max {
+			return fmt.Errorf("订阅 %s 失败: 已达到最大重试次数 %d", topic, max)
+		}
+		i++
+	}
+	return fmt.Errorf("订阅 %s 失败: ticker已停止", topic)
 }

@@ -48,6 +48,7 @@ type MQTTBrokerInfo struct {
 	OnPublishReceived func(paho.PublishReceived) (bool, error)
 }
 
+// NewClient 创建 MQTT 客户端
 func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 	var client *paho.Client
 	host := fmt.Sprintf("%s:%d", info.Host, info.Port)
@@ -135,6 +136,7 @@ func NewClient(info *MQTTBrokerInfo) (*paho.Client, error) {
 	return client, nil
 }
 
+// SubscribeTopic 订阅 MQTT 主题
 func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 
 	t := time.NewTicker(3 * time.Second)
@@ -178,3 +180,4 @@ func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 	}
 	return fmt.Errorf("订阅 %s 失败: ticker已停止", topic)
 }
+

@@ -3,16 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/Drunk6904/mqbot/internal/http"
 	"github.com/Drunk6904/mqbot/internal/mqtt"
 	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
-	"github.com/gin-gonic/gin"
 )
 
 // 类型定义 ======================================================
@@ -33,11 +32,11 @@ var password = ""
 
 var webPort = 8080
 
+var server *http.Server
+
 // Main ==========================================================
 
 func main() {
-	// 启动web服务
-	go func() { log.Fatal(Web().Run(fmt.Sprintf(":%d", webPort))) }()
 
 	// mqtt 服务
 	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
@@ -62,6 +61,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("订阅状态主题失败\n")
 	}
+	// 启动web服务
+	server = http.NewServer()
+	server.MqttClient = c
+	go func() {
+		if err = server.Start(webPort); err != nil {
+			log.Fatalf("启动 web服务失败：%v\n", err)
+		}
+	}()
 
 	// 停止
 	ic := make(chan os.Signal, 1)
@@ -74,19 +81,6 @@ func main() {
 		}
 	}
 	os.Exit(0)
-}
-
-// Web 服务相关 ==================================================
-
-// web 服务
-func Web() (r *gin.Engine) {
-	r = gin.Default()
-	r.GET("ping", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, gin.H{
-			"message": "pong",
-		})
-	})
-	return
 }
 
 // MQTT 服务相关 =================================================
@@ -104,7 +98,8 @@ func MsgHandler(pr paho.PublishReceived) (bool, error) {
 }
 
 func handStatus(pr paho.PublishReceived) {
-	// TODO
 	log.Printf("[status] %s", pr.Packet.Payload)
-
+	if server != nil {
+		server.Broadcast(pr.Packet.Payload)
+	}
 }

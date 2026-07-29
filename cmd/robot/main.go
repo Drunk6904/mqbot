@@ -39,6 +39,7 @@ func main() {
 	if *clientId == "" {
 		*clientId = fmt.Sprintf("bot_%d", rand.Intn(10000))
 	}
+	selfBot.ID = *clientId
 
 	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
 		Host:     *host,

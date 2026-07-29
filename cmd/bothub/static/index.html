@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mqbot 控制中心</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ========== 设计令牌 ========== */
+    :root {
+      --bg-deep: #0a0e14;
+      --bg: #0d1117;
+      --bg-raised: #161b22;
+      --bg-overlay: #1c2128;
+      --border: #30363d;
+      --border-dim: #21262d;
+      --text: #e6edf3;
+      --text-dim: #7d8590;
+      --text-muted: #484f58;
+      --accent: #58a6ff;
+      --accent-dim: #1f6feb;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+      --purple: #bc8cff;
+      --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+      --font-sans: 'Noto Sans SC', system-ui, sans-serif;
+      --radius: 6px;
+      --grid-size: 40;
+      /* 坐标系范围 -20 ~ 20 */
+      --grid-step: 5;
+      /* 网格线间隔 */
+    }
+
+    /* ========== 重置 & 基础 ========== */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      height: 100%;
+      background: var(--bg-deep);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* ========== 扫描线纹理（氛围感） ========== */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px);
+      z-index: 9999;
+    }
+
+    /* ========== 布局 ========== */
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+
+    /* -- 顶栏 -- */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border-dim);
+    }
+
+    .header__logo {
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .header__title {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .header__sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+    }
+
+    .header__status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .header__dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+
+    .header__dot.connected {
+      background: var(--green);
+    }
+
+    /* -- 主体 -- */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      overflow: hidden;
+    }
+
+    /* ========== 画布区域 ========== */
+    .canvas-area {
+      position: relative;
+      background: var(--bg-deep);
+      border-right: 1px solid var(--border-dim);
+      overflow: hidden;
+    }
+
+    #map {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 画布左下角坐标提示 */
+    .canvas-info {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    /* ========== 右侧面板 ========== */
+    .sidebar {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* -- 机器人列表 -- */
+    .robot-list {
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .robot-list__title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .robot-card {
+      background: var(--bg-raised);
+      border: 1px solid var(--border-dim);
+      border-radius: var(--radius);
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .robot-card:hover {
+      border-color: var(--border);
+    }
+
+    .robot-card.selected {
+      border-color: var(--accent-dim);
+      box-shadow: 0 0 0 1px var(--accent-dim);
+    }
+
+    .robot-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .robot-card__id {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .robot-card__state {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .robot-card__state--IDLE {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--green);
+    }
+
+    .robot-card__state--MOVING {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+    }
+
+    .robot-card__state--CHARGING {
+      background: rgba(210, 153, 34, 0.15);
+      color: var(--yellow);
+    }
+
+    .robot-card__state--ERROR {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+    }
+
+    .robot-card__state--OFFLINE {
+      background: rgba(125, 133, 144, 0.1);
+      color: var(--text-dim);
+    }
+
+    .robot-card__coords {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .robot-card__battery {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .robot-card__battery-bar {
+      flex: 1;
+      height: 3px;
+      background: var(--border-dim);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .robot-card__battery-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.5s, background 0.3s;
+    }
+
+    .robot-card__battery-text {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      min-width: 28px;
+      text-align: right;
+    }
+
+    .robot-list__empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 40px 0;
+    }
+
+    /* -- 任务下发 -- */
+    .task-form {
+      padding: 16px;
+      border-top: 1px solid var(--border-dim);
+      background: var(--bg-overlay);
+    }
+
+    .task-form__title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .form-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-dim);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent-dim);
+    }
+
+    .form-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .form-selected {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-bottom: 10px;
+      min-height: 18px;
+    }
+
+    .btn-send {
+      width: 100%;
+      padding: 9px 0;
+      background: var(--accent-dim);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+
+    .btn-send:hover {
+      background: #388bfd;
+    }
+
+    .btn-send:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ========== 滚动条 ========== */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-dim);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <!-- 顶栏 -->
+    <header class="header">
+      <div class="header__logo">M</div>
+      <span class="header__title">mqbot 控制中心</span>
+      <div class="header__sep"></div>
+      <div class="header__status">
+        <span class="header__dot" id="wsDot"></span>
+        <span id="wsLabel">未连接</span>
+      </div>
+    </header>
+
+    <!-- 主体 -->
+    <div class="main">
+      <!-- 画布 -->
+      <div class="canvas-area">
+        <canvas id="map"></canvas>
+        <div class="canvas-info" id="canvasInfo">移动鼠标查看坐标</div>
+      </div>
+
+      <!-- 侧边栏 -->
+      <div class="sidebar">
+        <!-- 机器人列表 -->
+        <div class="robot-list">
+          <div class="robot-list__title">Robots</div>
+          <div id="robotCards">
+            <div class="robot-list__empty">等待机器人连接...</div>
+          </div>
+        </div>
+
+        <!-- 任务下发 -->
+        <div class="task-form">
+          <div class="task-form__title">Task Dispatch</div>
+          <div class="form-selected" id="selectedInfo">点击列表选择机器人</div>
+          <div class="form-row">
+            <div>
+              <div class="form-label">X</div>
+              <input class="form-input" id="targetX" type="number" step="0.1" placeholder="0.0">
+            </div>
+            <div>
+              <div class="form-label">Y</div>
+              <input class="form-input" id="targetY" type="number" step="0.1" placeholder="0.0">
+            </div>
+          </div>
+          <button class="btn-send" id="btnSend" disabled>发送移动指令</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ========== 状态 ========== */
+    const robots = {};       // { botId: { id, x, y, battery, state, speed, ts } }
+    let selectedBot = null;
+    let ws = null;
+
+    /* ========== WebSocket ========== */
+    const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+    function connectWS() {
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        document.getElementById('wsDot').classList.add('connected');
+        document.getElementById('wsLabel').textContent = '已连接';
+      };
+
+      ws.onclose = () => {
+        document.getElementById('wsDot').classList.remove('connected');
+        document.getElementById('wsLabel').textContent = '已断开';
+        setTimeout(connectWS, 3000);   // 自动重连
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d.id) {
+            robots[d.id] = { ...d, ts: Date.now() };
+            renderList();
+          }
+        } catch (_) { }
+      };
+    }
+
+    connectWS();
+
+    /* ========== 机器人列表 ========== */
+    function renderList() {
+      const container = document.getElementById('robotCards');
+      const ids = Object.keys(robots);
+
+      if (ids.length === 0) {
+        container.innerHTML = '<div class="robot-list__empty">等待机器人连接...</div>';
+        return;
+      }
+
+      container.innerHTML = ids.map(id => {
+        const r = robots[id];
+        const batteryColor = r.battery > 50 ? 'var(--green)' : r.battery > 20 ? 'var(--yellow)' : 'var(--red)';
+        const sel = selectedBot === id ? ' selected' : '';
+        return `
+      <div class="robot-card${sel}" onclick="selectBot('${id}')">
+        <div class="robot-card__header">
+          <span class="robot-card__id">${esc(id)}</span>
+          <span class="robot-card__state robot-card__state--${r.state || 'OFFLINE'}">${r.state || 'OFFLINE'}</span>
+        </div>
+        <div class="robot-card__coords">x: ${r.x.toFixed(2)} &nbsp; y: ${r.y.toFixed(2)}</div>
+        <div class="robot-card__battery">
+          <div class="robot-card__battery-bar">
+            <div class="robot-card__battery-fill" style="width:${r.battery}%;background:${batteryColor}"></div>
+          </div>
+          <span class="robot-card__battery-text">${r.battery}%</span>
+        </div>
+      </div>`;
+      }).join('');
+    }
+
+    function selectBot(id) {
+      selectedBot = id;
+      document.getElementById('selectedInfo').textContent = `目标: ${id}`;
+      document.getElementById('btnSend').disabled = false;
+      renderList();
+    }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    /* ========== 任务下发 ========== */
+    document.getElementById('btnSend').addEventListener('click', () => {
+      if (!selectedBot || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+      const x = document.getElementById('targetX').value;
+      const y = document.getElementById('targetY').value;
+      if (!x && !y) return;
+
+      ws.send(JSON.stringify({
+        bot_id: selectedBot,
+        action: 'move_to',
+        params: { x: String(x || '0'), y: String(y || '0') }
+      }));
+    });
+
+    /* ========== Canvas 画布 ========== */
+    const canvas = document.getElementById('map');
+    const ctx = canvas.getContext('2d');
+    const GRID = 40;   // 坐标范围 -20 ~ 20
+    const STEP = 5;
+
+    let mouseX = null, mouseY = null;
+
+    function resize() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * devicePixelRatio;
+      canvas.height = rect.height * devicePixelRatio;
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // 坐标转换：世界坐标 → 画布像素
+    function toCanvas(wx, wy) {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const cx = w / 2, cy = h / 2;
+      const scale = Math.min(w, h) / GRID;
+      return [cx + wx * scale, cy - wy * scale];
+    }
+
+    // 画布像素 → 世界坐标
+    function toWorld(px, py) {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const cx = w / 2, cy = h / 2;
+      const scale = Math.min(w, h) / GRID;
+      return [(px - cx) / scale, (cy - py) / scale];
+    }
+
+    // 鼠标坐标提示
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      mouseX = wx; mouseY = wy;
+      document.getElementById('canvasInfo').textContent = `x: ${wx.toFixed(1)}  y: ${wy.toFixed(1)}`;
+    });
+    canvas.addEventListener('mouseleave', () => {
+      document.getElementById('canvasInfo').textContent = '移动鼠标查看坐标';
+    });
+
+    // 点击画布设置目标坐标
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const [wx, wy] = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+      document.getElementById('targetX').value = wx.toFixed(1);
+      document.getElementById('targetY').value = wy.toFixed(1);
+    });
+
+    // 状态颜色
+    const STATE_COLORS = {
+      IDLE: '#3fb950',
+      MOVING: '#58a6ff',
+      CHARGING: '#d29922',
+      ERROR: '#f85149',
+      OFFLINE: '#484f58',
+    };
+
+    // 绘制
+    function draw() {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // -- 网格线 --
+      ctx.strokeStyle = '#161b22';
+      ctx.lineWidth = 1;
+      for (let i = -GRID / 2; i <= GRID / 2; i += STEP) {
+        // 竖线
+        const [x1, y1] = toCanvas(i, -GRID / 2);
+        const [x2, y2] = toCanvas(i, GRID / 2);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        // 横线
+        const [x3, y3] = toCanvas(-GRID / 2, i);
+        const [x4, y4] = toCanvas(GRID / 2, i);
+        ctx.beginPath(); ctx.moveTo(x3, y3); ctx.lineTo(x4, y4); ctx.stroke();
+      }
+
+      // -- 坐标轴 --
+      const [ox, oy] = toCanvas(0, 0);
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1.5;
+      // X 轴
+      ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(w, oy); ctx.stroke();
+      // Y 轴
+      ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, h); ctx.stroke();
+
+      // 轴标签
+      ctx.font = '11px "JetBrains Mono"';
+      ctx.fillStyle = '#484f58';
+      ctx.textAlign = 'center';
+      for (let i = -GRID / 2; i <= GRID / 2; i += STEP) {
+        if (i === 0) continue;
+        const [lx] = toCanvas(i, 0);
+        ctx.fillText(i, lx, oy + 14);
+        const [, ly] = toCanvas(0, i);
+        ctx.fillText(i, ox - 14, ly + 4);
+      }
+
+      // -- 原点标记 --
+      ctx.fillStyle = '#484f58';
+      ctx.textAlign = 'right';
+      ctx.fillText('O', ox - 6, oy + 14);
+
+      // -- 机器人 --
+      for (const id in robots) {
+        const r = robots[id];
+        const [px, py] = toCanvas(r.x, r.y);
+        const color = STATE_COLORS[r.state] || STATE_COLORS.OFFLINE;
+
+        // 光晕
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, 16);
+        glow.addColorStop(0, color + '40');
+        glow.addColorStop(1, 'transparent');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(px, py, 16, 0, Math.PI * 2); ctx.fill();
+
+        // 圆点
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+
+        // 选中环
+        if (selectedBot === id) {
+          ctx.strokeStyle = '#58a6ff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        // 标签
+        ctx.font = '11px "JetBrains Mono"';
+        ctx.fillStyle = color;
+        ctx.textAlign = 'left';
+        ctx.fillText(id, px + 12, py + 4);
+      }
+
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
+</body>
+
+</html>

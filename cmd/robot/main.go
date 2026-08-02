@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,9 +25,16 @@ type RoBot struct {
 	protocol.StatusBody
 }
 
-var selfBot = RoBot{protocol.StatusBody{
-	Speed: 1,
-}}
+var (
+	selfBot = RoBot{
+		protocol.StatusBody{
+			Speed:   1,
+			State:   protocol.StateIdle,
+			Battery: 99,
+		}}
+	currentCancel context.CancelFunc
+	stateMutex    sync.Mutex
+)
 
 func main() {
 	host := flag.String("server", "localhost", "指定mqtt的broker ip")
@@ -41,6 +49,7 @@ func main() {
 	}
 	selfBot.ID = *clientId
 
+	// 创建MQTT客户端
 	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
 		Host:     *host,
 		Port:     *port,
@@ -59,6 +68,7 @@ func main() {
 		log.Fatalf("创建MQTT客户端失败：%s\n", err)
 	}
 
+	// 注册信号处理函数，用于在程序结束时断开MQTT连接
 	ic := make(chan os.Signal, 1)
 	signal.Notify(ic, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -83,7 +93,7 @@ func main() {
 		log.Fatalf("订阅频道发生错误：%s\n", err)
 	}
 
-	t := time.NewTicker(1000 * time.Millisecond)
+	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 	for range t.C {
 		msg, err := json.Marshal(selfBot)
@@ -127,6 +137,15 @@ func handTask(pr paho.PublishReceived) {
 }
 
 func handleMoveTo(data protocol.TaskMessage) {
+	stateMutex.Lock()
+
+	// 如果有旧的任务 结束
+	if currentCancel != nil {
+		currentCancel()
+	}
+	selfBot.TaskID = data.Body.TaskID
+	stateMutex.Unlock()
+
 	log.Printf("开始处理移动指令，当前位置: x=%.3f, y=%.3f", selfBot.X, selfBot.Y)
 	// 获取x和y的字符串值
 	xStr := protocol.StringParam(data.Body.Params, "x", fmt.Sprintf("%.3f", selfBot.X))
@@ -146,8 +165,25 @@ func handleMoveTo(data protocol.TaskMessage) {
 		return
 	}
 
+	ctx, can := context.WithCancel(context.Background())
+	ctx = context.WithValue(ctx, "task_id", data.Body.TaskID)
+	currentCancel = can
+
 	// 调用MoveTo函数
 	log.Printf("开始移动到目标位置: x=%.3f, y=%.3f", x, y)
-	robot.MoveTo(&selfBot.StatusBody, x, y)
-	log.Printf("移动完成，当前位置: x=%.3f, y=%.3f", selfBot.X, selfBot.Y)
+	go func() {
+		stateMutex.Lock()
+		if selfBot.TaskID == data.Body.TaskID {
+			selfBot.State = protocol.StateMoving
+		}
+		stateMutex.Unlock()
+
+		robot.MoveTo(ctx, &selfBot.StatusBody, x, y)
+
+		stateMutex.Lock()
+		if selfBot.TaskID == data.Body.TaskID {
+			selfBot.State = protocol.StateIdle
+		}
+		stateMutex.Unlock()
+	}()
 }

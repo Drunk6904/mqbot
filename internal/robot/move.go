@@ -1,31 +1,21 @@
 package robot
 
 import (
+	"context"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/Drunk6904/mqbot/protocol"
 )
 
-var (
-	moveMutex sync.RWMutex
-	stopChan  = make(chan struct{})
-)
-
-func MoveTo(s *protocol.StatusBody, x float64, y float64) {
-	// 获取读写锁
-	moveMutex.Lock()
-	defer moveMutex.Unlock()
-
+func MoveTo(ctx context.Context, s *protocol.StatusBody, x float64, y float64) {
 	// 记录上一次更新的时间
 	lastUpdate := time.Now()
 	var reached bool
 
 	for !reached {
 		select {
-		case <-stopChan:
-			// 收到停止信号，退出循环
+		case <-ctx.Done():
 			return
 		default:
 			// 计算当前时间
@@ -65,14 +55,7 @@ func MoveTo(s *protocol.StatusBody, x float64, y float64) {
 			s.Y = newY
 
 			// 使用固定的时间间隔来更新位置
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
-}
-
-// StopMove 停止移动
-func StopMove() {
-	close(stopChan)
-	// 重新创建通道，以便下次使用
-	stopChan = make(chan struct{})
 }

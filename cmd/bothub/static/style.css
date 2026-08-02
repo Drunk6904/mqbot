@@ -1,0 +1,385 @@
+/* ========== 设计令牌 ========== */
+:root {
+    --bg-deep: #0a0e14;
+    --bg: #0d1117;
+    --bg-raised: #161b22;
+    --bg-overlay: #1c2128;
+    --border: #30363d;
+    --border-dim: #21262d;
+    --text: #e6edf3;
+    --text-dim: #7d8590;
+    --text-muted: #484f58;
+    --accent: #58a6ff;
+    --accent-dim: #1f6feb;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+    --font-sans: 'Noto Sans SC', system-ui, sans-serif;
+    --radius: 6px;
+    --grid-size: 40;
+    /* 坐标系范围 -20 ~ 20 */
+    --grid-step: 5;
+    /* 网格线间隔 */
+}
+
+/* ========== 重置 & 基础 ========== */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    height: 100%;
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    overflow: hidden;
+}
+
+/* ========== 扫描线纹理（氛围感） ========== */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.03) 2px,
+            rgba(0, 0, 0, 0.03) 4px);
+    z-index: 9999;
+}
+
+/* ========== 布局 ========== */
+.app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+}
+
+/* -- 顶栏 -- */
+.header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.header__logo {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--accent);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.header__title {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.header__sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+}
+
+.header__status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.header__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    transition: background 0.3s;
+}
+
+.header__dot.connected {
+    background: var(--green);
+}
+
+/* -- 主体 -- */
+.main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    overflow: hidden;
+}
+
+/* ========== 画布区域 ========== */
+.canvas-area {
+    position: relative;
+    background: var(--bg-deep);
+    border-right: 1px solid var(--border-dim);
+    overflow: hidden;
+}
+
+#map {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* 画布左下角坐标提示 */
+.canvas-info {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+/* ========== 右侧面板 ========== */
+.sidebar {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+/* -- 机器人列表 -- */
+.robot-list {
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.robot-list__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.robot-card {
+    background: var(--bg-raised);
+    border: 1px solid var(--border-dim);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.robot-card:hover {
+    border-color: var(--border);
+}
+
+.robot-card.selected {
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 0 1px var(--accent-dim);
+}
+
+.robot-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.robot-card__id {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.robot-card__state {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.robot-card__state--IDLE {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--green);
+}
+
+.robot-card__state--MOVING {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent);
+}
+
+.robot-card__state--CHARGING {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--yellow);
+}
+
+.robot-card__state--ERROR {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--red);
+}
+
+.robot-card__state--OFFLINE {
+    background: rgba(125, 133, 144, 0.1);
+    color: var(--text-dim);
+}
+
+.robot-card__coords {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+
+.robot-card__battery {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.robot-card__battery-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--border-dim);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.robot-card__battery-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s, background 0.3s;
+}
+
+.robot-card__battery-text {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 28px;
+    text-align: right;
+}
+
+.robot-list__empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 40px 0;
+}
+
+/* -- 任务下发 -- */
+.task-form {
+    padding: 16px;
+    border-top: 1px solid var(--border-dim);
+    background: var(--bg-overlay);
+}
+
+.task-form__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.form-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+}
+
+.form-input {
+    width: 100%;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-dim);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-input:focus {
+    border-color: var(--accent-dim);
+}
+
+.form-input::placeholder {
+    color: var(--text-muted);
+}
+
+.form-selected {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 10px;
+    min-height: 18px;
+}
+
+.btn-send {
+    width: 100%;
+    padding: 9px 0;
+    background: var(--accent-dim);
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.btn-send:hover {
+    background: #388bfd;
+}
+
+.btn-send:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ========== 滚动条 ========== */
+::-webkit-scrollbar {
+    width: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-dim);
+    border-radius: 3px;
+}

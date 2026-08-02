@@ -2,6 +2,11 @@
 const robots = {} // { botId: { id, x, y, battery, state, speed, ts } }
 let selectedBot = null
 let ws = null
+let renderPending = false // 渲染待处理标志
+let lastRenderTime = 0
+const RENDER_INTERVAL = 100 // 渲染间隔（毫秒）
+let lastIdsKey = "" // 上次渲染时的机器人 id 集合，用于判断是否需要重建结构
+const cardNodes = {} // id -> 卡片 DOM 节点引用，用于增量更新
 
 /* ========== WebSocket ========== */
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
@@ -27,7 +32,7 @@ function connectWS() {
 			const d = JSON.parse(e.data)
 			if (d.id) {
 				robots[d.id] = { ...d, ts: Date.now() }
-				renderList()
+				scheduleRender()
 			}
 		} catch (_) {}
 	}
@@ -39,40 +44,72 @@ connectWS()
 function renderList() {
 	const container = document.getElementById("robotCards")
 	const ids = Object.keys(robots)
+	// 只有 id 集合变化（机器人增减）时才重建 DOM 结构，避免频繁重建打断点击
+	const idsKey = ids.slice().sort().join(",")
 
-	if (ids.length === 0) {
-		container.innerHTML = '<div class="robot-list__empty">等待机器人连接...</div>'
-		return
-	}
-
-	container.innerHTML = ids
-		.map((id) => {
-			const r = robots[id]
-			const batteryColor = r.battery > 50 ? "var(--green)" : r.battery > 20 ? "var(--yellow)" : "var(--red)"
-			const sel = selectedBot === id ? " selected" : ""
-			return `
-      <div class="robot-card${sel}" onclick="selectBot('${id}')">
+	if (idsKey !== lastIdsKey) {
+		// 清空旧节点引用
+		for (const k in cardNodes) delete cardNodes[k]
+		if (ids.length === 0) {
+			container.innerHTML = '<div class="robot-list__empty">等待机器人连接...</div>'
+		} else {
+			container.innerHTML = ""
+			ids.forEach((id) => {
+				const card = document.createElement("div")
+				card.className = "robot-card"
+				card.onclick = () => selectBot(id)
+				card.innerHTML = `
         <div class="robot-card__header">
-          <span class="robot-card__id">${esc(id)}</span>
-          <span class="robot-card__state robot-card__state--${r.state || "OFFLINE"}">${r.state || "OFFLINE"}</span>
+          <span class="robot-card__id"></span>
+          <span class="robot-card__state"></span>
         </div>
-        <div class="robot-card__coords">x: ${r.x.toFixed(2)} &nbsp; y: ${r.y.toFixed(2)}</div>
+        <div class="robot-card__coords"></div>
         <div class="robot-card__battery">
           <div class="robot-card__battery-bar">
-            <div class="robot-card__battery-fill" style="width:${r.battery}%;background:${batteryColor}"></div>
+            <div class="robot-card__battery-fill"></div>
           </div>
-          <span class="robot-card__battery-text">${r.battery}%</span>
-        </div>
-      </div>`
-		})
-		.join("")
+          <span class="robot-card__battery-text"></span>
+        </div>`
+				container.appendChild(card)
+				cardNodes[id] = {
+					el: card,
+					idEl: card.querySelector(".robot-card__id"),
+					stateEl: card.querySelector(".robot-card__state"),
+					coordsEl: card.querySelector(".robot-card__coords"),
+					fillEl: card.querySelector(".robot-card__battery-fill"),
+					textEl: card.querySelector(".robot-card__battery-text"),
+				}
+			})
+		}
+		lastIdsKey = idsKey
+	}
+
+	if (ids.length === 0) return
+
+	// 实时更新动态字段（不销毁 DOM，点击事件不会被打断）
+	ids.forEach((id) => {
+		const r = robots[id]
+		const n = cardNodes[id]
+		if (!n) return
+		const batteryColor = r.battery > 50 ? "var(--green)" : r.battery > 20 ? "var(--yellow)" : "var(--red)"
+		n.idEl.textContent = id
+		n.stateEl.textContent = r.state || "OFFLINE"
+		n.stateEl.className = "robot-card__state robot-card__state--" + (r.state || "OFFLINE")
+		n.coordsEl.textContent = `x: ${r.x.toFixed(2)}  y: ${r.y.toFixed(2)}`
+		n.fillEl.style.width = r.battery + "%"
+		n.fillEl.style.background = batteryColor
+		n.textEl.textContent = r.battery + "%"
+		// 选中态：用 class 增删，不重建节点
+		if (selectedBot === id) n.el.classList.add("selected")
+		else n.el.classList.remove("selected")
+	})
 }
 
 function selectBot(id) {
 	selectedBot = id
 	document.getElementById("selectedInfo").textContent = `目标: ${id}`
 	document.getElementById("btnSend").disabled = false
-	renderList()
+	scheduleRender()
 }
 
 function esc(s) {
@@ -98,10 +135,33 @@ document.getElementById("btnSend").addEventListener("click", () => {
 	)
 })
 
+/* ========== 渲染节流 ========== */
+function scheduleRender() {
+	if (!renderPending) {
+		renderPending = true
+		const now = Date.now()
+		const timeSinceLastRender = now - lastRenderTime
+
+		if (timeSinceLastRender >= RENDER_INTERVAL) {
+			// 如果距离上次渲染已超过间隔，立即渲染
+			renderPending = false
+			lastRenderTime = now
+			renderList()
+		} else {
+			// 否则延迟到下一个渲染间隔
+			setTimeout(() => {
+				renderPending = false
+				lastRenderTime = Date.now()
+				renderList()
+			}, RENDER_INTERVAL - timeSinceLastRender)
+		}
+	}
+}
+
 /* ========== Canvas 画布 ========== */
 const canvas = document.getElementById("map")
 const ctx = canvas.getContext("2d")
-const GRID = 40 // 坐标范围 -20 ~ 20
+const GRID = 100 // 坐标范围
 const STEP = 5
 
 let mouseX = null,

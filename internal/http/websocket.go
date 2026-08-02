@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Drunk6904/mqbot/protocol"
 	"github.com/eclipse/paho.golang/paho"
@@ -101,14 +102,56 @@ func (s *Server) handleWSMessage(msg []byte) {
 	}
 }
 
+// Broadcast 广播消息到所有WebSocket连接
 func (s *Server) Broadcast(data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for conn := range s.wsConns {
-		err := conn.WriteMessage(websocket.TextMessage, data)
-		if err != nil {
-			conn.Close()
-			delete(s.wsConns, conn)
+
+	// 将消息放入缓冲区
+	s.msgBuffer = append(s.msgBuffer, data)
+
+	// 如果缓冲区已满，丢弃最旧的消息
+	if len(s.msgBuffer) > maxBufferSize {
+		s.msgBuffer = s.msgBuffer[1:]
+	}
+}
+
+// broadcastLoop 定期广播缓冲区中的最新消息
+func (s *Server) broadcastLoop() {
+	ticker := time.NewTicker(broadcastInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		s.mu.Lock()
+		if len(s.msgBuffer) > 0 {
+			// 只发送最新的消息
+			latestMsg := s.msgBuffer[len(s.msgBuffer)-1]
+			s.msgBuffer = s.msgBuffer[:0] // 清空缓冲区
+
+			// 复制连接列表以避免在锁内发送消息
+			conns := make([]*websocket.Conn, 0, len(s.wsConns))
+			for conn := range s.wsConns {
+				conns = append(conns, conn)
+			}
+			s.mu.Unlock()
+
+			// 在锁外发送消息
+			for _, conn := range conns {
+				err := conn.WriteMessage(websocket.TextMessage, latestMsg)
+				if err != nil {
+					s.mu.Lock()
+					delete(s.wsConns, conn)
+					s.mu.Unlock()
+					conn.Close()
+				}
+			}
+		} else {
+			s.mu.Unlock()
 		}
 	}
 }
+
+const (
+	maxBufferSize     = 256                    // 缓冲区最大消息数
+	broadcastInterval = 100 * time.Millisecond // 广播间隔
+)

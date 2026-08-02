@@ -42,13 +42,14 @@ func main() {
 	clientId := flag.String("id", "", "客户端id，不输入则按某规则进行生成")
 	username := flag.String("username", "", "指定用户名")
 	password := flag.String("password", "", "登录密码")
+	speed := flag.Float64("speed", 1.0, "速度")
 	flag.Parse()
 
 	if *clientId == "" {
 		*clientId = fmt.Sprintf("bot_%d", rand.Intn(10000))
 	}
 	selfBot.ID = *clientId
-
+	selfBot.Speed = *speed
 	// 创建MQTT客户端
 	c, err := mqtt.NewClient(&mqtt.MQTTBrokerInfo{
 		Host:     *host,

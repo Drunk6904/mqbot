@@ -13,12 +13,19 @@ type Server struct {
 	Router     *gin.Engine
 	MqttClient *paho.Client
 	wsConns    map[*websocket.Conn]bool
+	msgBuffer  [][]byte // 消息缓冲区
 	mu         sync.Mutex
 }
 
 func NewServer() *Server {
 	r := gin.Default()
-	s := &Server{Router: r, wsConns: make(map[*websocket.Conn]bool)}
+	s := &Server{
+		Router:    r,
+		wsConns:   make(map[*websocket.Conn]bool),
+		msgBuffer: make([][]byte, 0, maxBufferSize),
+	}
+	// 启动广播循环
+	go s.broadcastLoop()
 	return s
 }
 

@@ -97,6 +97,20 @@ func main() {
 	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 	for range t.C {
+		if selfBot.State == protocol.StateCharging {
+			selfBot.Battery += 2
+		}
+		if selfBot.Battery <= 20 && selfBot.State != protocol.StateCharging {
+			selfBot.State = protocol.StateCharging
+			currentCancel()
+		}
+		if selfBot.State == protocol.StateCharging && selfBot.Battery > 90 {
+			selfBot.State = protocol.StateIdle
+		}
+		if selfBot.State == protocol.StateMoving {
+			selfBot.Battery -= 1
+		}
+
 		msg, err := json.Marshal(selfBot)
 		if err != nil {
 			log.Fatalf("报备状态时，解析状态发生错误：%s\n", err)
@@ -121,6 +135,8 @@ func handMsg(pr paho.PublishReceived) (bool, error) {
 	switch {
 	case strings.HasSuffix(pr.Packet.Topic, "/task"):
 		handTask(pr)
+	case strings.HasSuffix(pr.Packet.Topic, "/command"):
+		handCommand(pr)
 	}
 	return true, nil
 }
@@ -135,6 +151,29 @@ func handTask(pr paho.PublishReceived) {
 		handleMoveTo(data)
 	}
 
+}
+
+// handCommand 处理接收到的MQTT命令消息
+// 参数:
+//   - pr: MQTT接收到的消息对象，包含消息载荷等信息
+//
+// 功能:
+//  1. 解析消息载荷为CommandMessage结构体
+//  2. 根据命令类型执行相应操作：
+//     - ActionStop: 取消当前正在执行的任务
+//     - ActionSetSpeed: 更新机器人的速度参数
+func handCommand(pr paho.PublishReceived) {
+	var data protocol.CommandMessage
+	err := json.Unmarshal(pr.Packet.Payload, &data)
+	if err != nil {
+		log.Printf("处理MQTT消息(command)失败：%+v", err)
+	}
+	switch data.Body.Action {
+	case protocol.ActionStop:
+		currentCancel()
+	case protocol.ActionSetSpeed:
+		selfBot.Speed = protocol.FloatParam(data.Body.Params, "speed", 1.0)
+	}
 }
 
 func handleMoveTo(data protocol.TaskMessage) {

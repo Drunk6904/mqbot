@@ -26,10 +26,10 @@ type MQTTBrokerInfo struct {
 	ClientId string // 客户端唯一标识符
 
 	// ===== 会话参数 =====
-	CleanStart    bool   // 是否清除历史会话
-	KeepAlive     uint16 // 客户端与服务器的心跳间隔（秒）
-	SessionExpiry uint32 // 会话过期时间
-	Will          WillMessage
+	CleanStart    bool        // 是否清除历史会话
+	KeepAlive     uint16      // 客户端与服务器的心跳间隔（秒）
+	SessionExpiry uint32      // 会话过期时间
+	Will          WillMessage // 遗嘱消息
 
 	// ===== 认证与安全 =====
 	Auth     bool // 是否认证
@@ -180,4 +180,3 @@ func SubscribeTopic(c *paho.Client, topic string, qos byte) error {
 	}
 	return fmt.Errorf("订阅 %s 失败: ticker已停止", topic)
 }
-

@@ -75,6 +75,11 @@ func main() {
 		CleanStart: true,
 		KeepAlive:  30,
 		Auth:       false,
+		Will: mqtt.WillMessage{
+			QoS:     1,
+			Topic:   fmt.Sprintf(protocol.StatusTopic, *clientId),
+			Payload: getStateOffline(),
+		},
 	})
 	// 错误处理
 	if err != nil {
@@ -129,6 +134,17 @@ func main() {
 	}
 }
 
+func getStateOffline() []byte {
+	msg, err := json.Marshal(protocol.StatusBody{
+		State: protocol.StateOffline,
+	})
+	if err != nil {
+		log.Printf("遗嘱消息建立失败：%s\n", err)
+		return nil
+	}
+	return msg
+}
+
 func sendState(c *paho.Client, clientId *string) {
 	stateMutex.Lock()
 	if !shouldReportLocked() {
@@ -138,7 +154,6 @@ func sendState(c *paho.Client, clientId *string) {
 	snap := selfBot.StatusBody
 	updateLastReportedLocked()
 	stateMutex.Unlock()
-
 
 	msg, err := json.Marshal(snap)
 	if err != nil {
@@ -158,7 +173,6 @@ func sendState(c *paho.Client, clientId *string) {
 		log.Printf("报备状态时，发布消息发生错误：%s\n", err)
 	}
 }
-
 
 func shouldReportLocked() bool {
 	// 电量变化超过1%即上报
@@ -185,7 +199,6 @@ func shouldReportLocked() bool {
 
 	return false
 }
-
 
 func updateLastReportedLocked() {
 	lastReported = stateSnapshot{

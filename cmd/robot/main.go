@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -25,6 +26,15 @@ type RoBot struct {
 	protocol.StatusBody
 }
 
+// 状态快照结构体
+type stateSnapshot struct {
+	Battery float64
+	State   string
+	X       float64
+	Y       float64
+	Speed   float64
+}
+
 var (
 	selfBot = RoBot{
 		protocol.StatusBody{
@@ -34,6 +44,8 @@ var (
 		}}
 	currentCancel context.CancelFunc
 	stateMutex    sync.Mutex
+
+	lastReported stateSnapshot
 )
 
 func main() {
@@ -94,6 +106,9 @@ func main() {
 		log.Fatalf("订阅频道发生错误：%s\n", err)
 	}
 
+	// 发送连接建立成功消息
+	sendState(c, clientId)
+
 	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 	for range t.C {
@@ -110,25 +125,84 @@ func main() {
 		if selfBot.State == protocol.StateMoving {
 			selfBot.Battery -= 1
 		}
-
-		msg, err := json.Marshal(selfBot)
-		if err != nil {
-			log.Fatalf("报备状态时，解析状态发生错误：%s\n", err)
-		}
-		props := &paho.PublishProperties{}
-		props.User.Add("botId", *clientId)
-		cp := &paho.Publish{
-			Topic:      fmt.Sprintf(protocol.StatusTopic, *clientId),
-			QoS:        0,
-			Payload:    msg,
-			Properties: props,
-		}
-		_, err = c.Publish(context.Background(), cp)
-		if err != nil {
-			log.Fatalf("报备状态时，发布消息发生错误：%s\n", err)
-		}
+		sendState(c, clientId)
 	}
 }
+
+func sendState(c *paho.Client, clientId *string) {
+	stateMutex.Lock()
+	if !shouldReportLocked() {
+		stateMutex.Unlock()
+		return
+	}
+	snap := selfBot.StatusBody
+	updateLastReportedLocked()
+	stateMutex.Unlock()
+
+
+	msg, err := json.Marshal(snap)
+	if err != nil {
+		log.Printf("报备状态时，解析状态发生错误：%s\n", err)
+		return
+	}
+
+	props := &paho.PublishProperties{}
+	props.User.Add("botId", *clientId)
+	cp := &paho.Publish{
+		Topic:      fmt.Sprintf(protocol.StatusTopic, *clientId),
+		QoS:        0,
+		Payload:    msg,
+		Properties: props,
+	}
+	if _, err = c.Publish(context.Background(), cp); err != nil {
+		log.Printf("报备状态时，发布消息发生错误：%s\n", err)
+	}
+}
+
+
+func shouldReportLocked() bool {
+	// 电量变化超过1%即上报
+	if math.Abs(selfBot.Battery-lastReported.Battery) > 1.0 {
+		return true
+	}
+
+	// 状态机变化上报
+	if selfBot.State != lastReported.State {
+		return true
+	}
+
+	// 位置变化超过0.01
+	const epsilon = 0.01
+	if math.Abs(selfBot.X-lastReported.X) > epsilon ||
+		math.Abs(selfBot.Y-lastReported.Y) > epsilon {
+		return true
+	}
+
+	// 4. 速度变化
+	if math.Abs(selfBot.Speed-lastReported.Speed) > 0.1 {
+		return true
+	}
+
+	return false
+}
+
+
+func updateLastReportedLocked() {
+	lastReported = stateSnapshot{
+		Battery: selfBot.Battery,
+		State:   selfBot.State,
+		X:       selfBot.X,
+		Y:       selfBot.Y,
+		Speed:   selfBot.Speed,
+	}
+}
+
+// func calculateHash(msg []byte) string {
+// 	h := fnv.New32a()
+// 	h.Write(msg)
+// 	hashBytes := h.Sum(nil)
+// 	return hex.EncodeToString(hashBytes)
+// }
 
 // 回调函数，对接收的消息进行处理
 func handMsg(pr paho.PublishReceived) (bool, error) {
@@ -150,18 +224,9 @@ func handTask(pr paho.PublishReceived) {
 	case protocol.ActionMoveTo:
 		handleMoveTo(data)
 	}
-
 }
 
 // handCommand 处理接收到的MQTT命令消息
-// 参数:
-//   - pr: MQTT接收到的消息对象，包含消息载荷等信息
-//
-// 功能:
-//  1. 解析消息载荷为CommandMessage结构体
-//  2. 根据命令类型执行相应操作：
-//     - ActionStop: 取消当前正在执行的任务
-//     - ActionSetSpeed: 更新机器人的速度参数
 func handCommand(pr paho.PublishReceived) {
 	var data protocol.CommandMessage
 	err := json.Unmarshal(pr.Packet.Payload, &data)

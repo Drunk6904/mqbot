@@ -26,7 +26,6 @@ func newHeader() Header {
 
 // ============ 状态常量（协议层用字符串，跨语言友好）============
 
-
 const (
 	StateIdle     = "IDLE"
 	StateMoving   = "MOVING"
@@ -53,7 +52,7 @@ type StatusBody struct {
 	ID      string  `json:"id"`                // 设备id
 	X       float64 `json:"x"`                 // x 坐标
 	Y       float64 `json:"y"`                 // y 坐标
-	Battery int     `json:"battery"`           // 电量
+	Battery float64 `json:"battery"`           // 电量
 	State   string  `json:"state"`             // 状态
 	Speed   float64 `json:"speed"`             // 速度
 	TaskID  string  `json:"task_id,omitempty"` // 当前执行的任务ID，空则省略

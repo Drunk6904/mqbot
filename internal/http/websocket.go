@@ -14,6 +14,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	maxBufferSize     = 256                    // 缓冲区最大消息数
+	broadcastInterval = 100 * time.Millisecond // 广播间隔
+	sendBufferSize    = 64                     // 每个浏览器的消息缓冲数量
+)
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // 开发阶段允许所有来源
 }
@@ -43,15 +49,39 @@ func (s *Server) handleWS(ctx *gin.Context) {
 	}
 }
 
+func (s *Server) writePump(conn *websocket.Conn, send chan []byte) {
+	defer conn.Close()
+
+	for {
+		data, ok := <-send
+		if !ok {
+			return
+		}
+
+		err := conn.WriteMessage(websocket.TextMessage, data)
+		if err != nil {
+			log.Printf("写入WebSocket消息失败: %v", err)
+			return
+		}
+	}
+}
+
 func (s *Server) addWSConn(conn *websocket.Conn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.wsConns[conn] = true
+
+	send := make(chan []byte, sendBufferSize)
+	go s.writePump(conn, send)
+
+	s.wsConns[conn] = send
 }
 
 func (s *Server) removeWSConn(conn *websocket.Conn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	send := s.wsConns[conn]
+	close(send)
 	delete(s.wsConns, conn)
 }
 
@@ -150,8 +180,3 @@ func (s *Server) broadcastLoop() {
 		}
 	}
 }
-
-const (
-	maxBufferSize     = 256                    // 缓冲区最大消息数
-	broadcastInterval = 100 * time.Millisecond // 广播间隔
-)

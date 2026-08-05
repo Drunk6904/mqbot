@@ -12,7 +12,7 @@ import (
 type Server struct {
 	Router     *gin.Engine
 	MqttClient *paho.Client
-	wsConns    map[*websocket.Conn]bool
+	wsConns    map[*websocket.Conn]chan []byte
 	msgBuffer  [][]byte // 消息缓冲区
 	mu         sync.Mutex
 }
@@ -21,7 +21,7 @@ func NewServer() *Server {
 	r := gin.Default()
 	s := &Server{
 		Router:    r,
-		wsConns:   make(map[*websocket.Conn]bool),
+		wsConns:   make(map[*websocket.Conn]chan []byte),
 		msgBuffer: make([][]byte, 0, maxBufferSize),
 	}
 	// 启动广播循环
@@ -34,4 +34,3 @@ func (s *Server) Start(port int) error {
 	s.registerRoutes()
 	return s.Router.Run(fmt.Sprintf(":%d", port))
 }
-

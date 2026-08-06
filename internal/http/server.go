@@ -20,12 +20,9 @@ type Server struct {
 func NewServer() *Server {
 	r := gin.Default()
 	s := &Server{
-		Router:    r,
-		wsConns:   make(map[*websocket.Conn]chan []byte),
-		msgBuffer: make([][]byte, 0, maxBufferSize),
+		Router:  r,
+		wsConns: make(map[*websocket.Conn]chan []byte),
 	}
-	// 启动广播循环
-	go s.broadcastLoop()
 	return s
 }
 
